@@ -56,18 +56,11 @@ type antigravityRetryLoopResult struct {
 // 上游拒绝 → 账号被 401「Invalid bearer token」/502 打入临时不可调度且无法恢复
 // （见 #3611 / #2962）。后台「测试连接」用的是生产端点，所以「测试成功但网关 401」。
 func resolveAntigravityForwardBaseURL(account *Account) string {
-	baseURLs := antigravity.BaseURLs
-	if len(baseURLs) == 0 {
-		return ""
-	}
 	mode := strings.ToLower(strings.TrimSpace(os.Getenv(antigravityForwardBaseURLEnv)))
-	if (mode == "daily" || mode == "sandbox") && len(baseURLs) > 1 {
-		return baseURLs[1]
+	if mode == "prod" {
+		return "https://cloudcode-pa.googleapis.com"
 	}
-	if mode == "" && accountHasAntigravityPaidTier(account) && len(baseURLs) > 1 {
-		return baseURLs[1]
-	}
-	return baseURLs[0]
+	return "https://daily-cloudcode-pa.googleapis.com"
 }
 
 func accountHasAntigravityPaidTier(account *Account) bool {

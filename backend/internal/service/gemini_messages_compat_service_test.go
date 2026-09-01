@@ -370,6 +370,10 @@ func TestCleanToolSchema_NormalizesGeminiUnsupportedSchemaFields(t *testing.T) {
 		"definitions": map[string]any{
 			"legacy": map[string]any{"type": "number"},
 		},
+		"propertyNames": map[string]any{
+			"pattern": "^[a-zA-Z_]+$",
+		},
+		"unevaluatedProperties": false,
 		"properties": map[string]any{
 			"path": map[string]any{
 				"type": []any{"string", "null"},
@@ -380,6 +384,22 @@ func TestCleanToolSchema_NormalizesGeminiUnsupportedSchemaFields(t *testing.T) {
 			"empty": map[string]any{
 				"type": []any{"null"},
 			},
+			"action": map[string]any{
+				"type":  "string",
+				"const": "read",
+			},
+			"nested": map[string]any{
+				"type": "object",
+				"propertyNames": map[string]any{
+					"pattern": "^[a-z]+$",
+				},
+				"properties": map[string]any{
+					"kind": map[string]any{
+						"type":  "string",
+						"const": "tool_call",
+					},
+				},
+			},
 		},
 	}
 
@@ -388,6 +408,8 @@ func TestCleanToolSchema_NormalizesGeminiUnsupportedSchemaFields(t *testing.T) {
 	require.Equal(t, "OBJECT", cleaned["type"])
 	require.NotContains(t, cleaned, "$defs")
 	require.NotContains(t, cleaned, "definitions")
+	require.NotContains(t, cleaned, "propertyNames")
+	require.NotContains(t, cleaned, "unevaluatedProperties")
 
 	properties, ok := cleaned["properties"].(map[string]any)
 	require.True(t, ok)
@@ -403,6 +425,21 @@ func TestCleanToolSchema_NormalizesGeminiUnsupportedSchemaFields(t *testing.T) {
 	emptySchema, ok := properties["empty"].(map[string]any)
 	require.True(t, ok)
 	require.NotContains(t, emptySchema, "type")
+
+	actionSchema, ok := properties["action"].(map[string]any)
+	require.True(t, ok)
+	require.NotContains(t, actionSchema, "const")
+	require.Equal(t, []any{"read"}, actionSchema["enum"])
+
+	nestedSchema, ok := properties["nested"].(map[string]any)
+	require.True(t, ok)
+	require.NotContains(t, nestedSchema, "propertyNames")
+	nestedProps, ok := nestedSchema["properties"].(map[string]any)
+	require.True(t, ok)
+	kindSchema, ok := nestedProps["kind"].(map[string]any)
+	require.True(t, ok)
+	require.NotContains(t, kindSchema, "const")
+	require.Equal(t, []any{"tool_call"}, kindSchema["enum"])
 }
 
 func TestCleanToolSchema_ConvertsNestedIntegerExclusiveMinimum(t *testing.T) {

@@ -3585,10 +3585,20 @@ func cleanToolSchema(schema any) any {
 		for key, value := range v {
 			// 跳过不支持的字段
 			if key == "$schema" || key == "$id" || key == "$ref" ||
-				key == "$defs" || key == "definitions" ||
-				key == "additionalProperties" || key == "patternProperties" || key == "minLength" ||
-				key == "maxLength" || key == "minItems" || key == "maxItems" || key == "exclusiveMinimum" ||
-				key == "deprecated" {
+				key == "$defs" || key == "definitions" || key == "$comment" ||
+				key == "additionalProperties" || key == "patternProperties" || key == "propertyNames" ||
+				key == "unevaluatedProperties" || key == "dependentRequired" || key == "dependentSchemas" ||
+				key == "minLength" || key == "maxLength" || key == "minItems" || key == "maxItems" ||
+				key == "exclusiveMinimum" || key == "exclusiveMaximum" || key == "multipleOf" ||
+				key == "deprecated" || key == "readOnly" || key == "writeOnly" ||
+				key == "contentEncoding" || key == "contentMediaType" || key == "examples" ||
+				key == "default" {
+				continue
+			}
+			if key == "const" {
+				if _, hasEnum := v["enum"]; !hasEnum {
+					cleaned["enum"] = []any{value}
+				}
 				continue
 			}
 			// 递归清理嵌套对象
