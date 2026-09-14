@@ -108,6 +108,11 @@ export default defineConfig(({ mode }) => {
     emptyOutDir: true,
     rollupOptions: {
       output: {
+        // 产物文件名只保留 hash，不带组件/模块名，避免通过资源文件名反查源码结构。
+        // 保留 "a-" 前缀是为了匹配后端 static_cache.go 的 `name-<8位hash>` 判定，维持 immutable 缓存。
+        entryFileNames: 'assets/a-[hash].js',
+        chunkFileNames: 'assets/a-[hash].js',
+        assetFileNames: 'assets/a-[hash][extname]',
         /**
          * 手动分包配置
          * 分离第三方库并按功能合并应用代码，避免循环依赖

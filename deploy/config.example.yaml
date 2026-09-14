@@ -133,6 +133,16 @@ security:
   # forwarded_client_ip_headers:
   #   - "True-Client-IP"
   #   - "X-CDN-Client-IP"
+  # Block known AI crawlers / AI-assisted fetchers (GPTBot, ClaudeBot, Claude-User,
+  # PerplexityBot, CCBot, Bytespider ...) by User-Agent with a bare 403. Applies
+  # to every path. Built-in list lives in middleware/bot_block.go.
+  # 按 User-Agent 拦截已知 AI 爬虫 / AI 代抓取（用户把网址贴给 AI 后由 AI 侧发起），
+  # 命中返回裸 403，对所有路径生效。内置名单见 middleware/bot_block.go。
+  # Environment / 环境变量: SECURITY_BOT_BLOCK_ENABLED=false 可关闭
+  bot_block:
+    enabled: true
+    # Extra case-insensitive UA substrings to block / 追加拦截的 UA 片段（大小写不敏感）
+    extra_user_agents: []
   url_allowlist:
     # Enable URL allowlist validation (disable to skip all URL checks)
     # 启用 URL 白名单验证（禁用则跳过所有 URL 检查）

@@ -79,9 +79,9 @@ type PluginCompatibility struct {
 	Tested             bool   `json:"tested"`
 	Status             string `json:"status"`
 	Message            string `json:"message"`
-	CurrentSub2API     string `json:"current_sub2api_version"`
-	RequiredSub2API    string `json:"required_sub2api_version"`
-	RecommendedSub2API string `json:"recommended_sub2api_version"`
+	CurrentSub2API     string `json:"current_kimai_version"`
+	RequiredSub2API    string `json:"required_kimai_version"`
+	RecommendedSub2API string `json:"recommended_kimai_version"`
 	PluginProtocol     int    `json:"plugin_protocol"`
 	TransportAPI       int    `json:"transport_api"`
 	UIBridge           int    `json:"ui_bridge"`

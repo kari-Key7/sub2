@@ -19,6 +19,9 @@ func TestIsFingerprintedEmbeddedAssetPath(t *testing.T) {
 	}{
 		{name: "fingerprinted_js", path: "assets/index-AbCd1234.js", want: true},
 		{name: "fingerprinted_css", path: "assets/app-a1B2c3D4.css", want: true},
+		// vite.config.ts 现在输出去掉模块名的 "a-<hash>" 文件名，必须仍被识别为可长期缓存
+		{name: "hash_only_prefixed_js", path: "assets/a-B4LKlKdK.js", want: true},
+		{name: "hash_only_prefixed_css", path: "assets/a-DB0Q8XAf.css", want: true},
 		{name: "fingerprinted_url_safe_hash", path: "assets/app-aB1-2_Cd.css", want: true},
 		{name: "nested_fingerprinted_asset", path: "assets/vendor/chunk-AbCd1234.js", want: true},
 		{name: "leading_slash_fingerprinted_asset", path: "/assets/index-AbCd1234.js", want: true},

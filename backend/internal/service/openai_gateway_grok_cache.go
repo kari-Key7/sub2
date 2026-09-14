@@ -7,6 +7,7 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/brand"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
 	"github.com/gin-gonic/gin"
 	"github.com/tidwall/gjson"
@@ -16,7 +17,7 @@ import (
 const (
 	grokConversationIDHeader         = "X-Grok-Conv-Id"
 	claudeCodeSessionHeader          = "X-Claude-Code-Session-Id"
-	grokClientToolCacheOptInHeader   = "X-Sub2API-Grok-Client-Tool-Cache"
+	grokClientToolCacheOptInHeader   = brand.GrokClientToolCacheHeader
 	grokFreeCacheNativeToolsJSON     = `[{"type":"web_search"},{"type":"x_search"}]`
 	grokFreeCacheDisabledToolChoice  = "none"
 	grokClientToolCacheOptInExtraKey = "grok_client_tool_cache_enabled"

@@ -11,6 +11,7 @@ import (
 
 	"github.com/pquerna/otp/totp"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/brand"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 )
 
@@ -93,7 +94,7 @@ const (
 	totpLoginTTL    = 5 * time.Minute
 	totpAttemptsTTL = 15 * time.Minute
 	maxTotpAttempts = 5
-	totpIssuer      = "Sub2API"
+	totpIssuer      = brand.Name
 )
 
 // TotpService handles TOTP operations

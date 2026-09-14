@@ -10,6 +10,7 @@ import (
 
 	"log/slog"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/brand"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
@@ -18,11 +19,16 @@ import (
 )
 
 const (
-	dataType       = "sub2api-data"
-	legacyDataType = "sub2api-bundle"
-	dataVersion    = 1
-	dataPageCap    = 1000
+	dataType    = brand.ExportDataType
+	dataVersion = 1
+	dataPageCap = 1000
 )
+
+// 历史导出文件使用的 type 值，导入时继续兼容；导出只写 dataType。
+var legacyDataTypes = map[string]struct{}{
+	"sub2api-data":   {},
+	"sub2api-bundle": {},
+}
 
 type DataPayload struct {
 	Type       string        `json:"type,omitempty"`
@@ -636,7 +642,7 @@ func parseIncludeProxies(c *gin.Context) (bool, error) {
 }
 
 func validateDataHeader(payload DataPayload) error {
-	if payload.Type != "" && payload.Type != dataType && payload.Type != legacyDataType {
+	if _, legacy := legacyDataTypes[payload.Type]; payload.Type != "" && payload.Type != dataType && !legacy {
 		return fmt.Errorf("unsupported data type: %s", payload.Type)
 	}
 	if payload.Version != 0 && payload.Version != dataVersion {

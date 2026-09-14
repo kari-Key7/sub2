@@ -1,0 +1,38 @@
+# AI crawlers / AI-assisted fetchers
+User-agent: GPTBot
+User-agent: ChatGPT-User
+User-agent: OAI-SearchBot
+User-agent: ClaudeBot
+User-agent: Claude-User
+User-agent: Claude-SearchBot
+User-agent: Claude-Web
+User-agent: anthropic-ai
+User-agent: PerplexityBot
+User-agent: Perplexity-User
+User-agent: Google-Extended
+User-agent: Google-CloudVertexBot
+User-agent: meta-externalagent
+User-agent: meta-externalfetcher
+User-agent: FacebookBot
+User-agent: Applebot-Extended
+User-agent: Bytespider
+User-agent: Amazonbot
+User-agent: CCBot
+User-agent: cohere-ai
+User-agent: Diffbot
+User-agent: YouBot
+User-agent: DuckAssistBot
+User-agent: MistralAI-User
+User-agent: AI2Bot
+User-agent: omgili
+User-agent: img2dataset
+User-agent: Timpibot
+User-agent: PetalBot
+User-agent: iaskbot
+User-agent: Kangaroo Bot
+User-agent: webzio-extended
+Disallow: /
+
+# Everyone else: no indexing of the app
+User-agent: *
+Disallow: /

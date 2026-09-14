@@ -14,6 +14,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/brand"
 	"github.com/spf13/viper"
 	"golang.org/x/net/http/httpguts"
 )
@@ -717,6 +718,13 @@ type WebAuthnConfig struct {
 
 const MaxForwardedClientIPHeaders = 16
 
+// BotBlockConfig 控制 AI 爬虫 User-Agent 拦截中间件。
+// 内置名单见 middleware.defaultBlockedUserAgents；ExtraUserAgents 追加自定义片段（大小写不敏感）。
+type BotBlockConfig struct {
+	Enabled         bool     `mapstructure:"enabled"`
+	ExtraUserAgents []string `mapstructure:"extra_user_agents"`
+}
+
 type ForwardedClientIPSettings struct {
 	TrustForwardedIP bool
 	Headers          []string
@@ -728,6 +736,7 @@ type SecurityConfig struct {
 	CSP             CSPConfig            `mapstructure:"csp"`
 	ProxyFallback   ProxyFallbackConfig  `mapstructure:"proxy_fallback"`
 	ProxyProbe      ProxyProbeConfig     `mapstructure:"proxy_probe"`
+	BotBlock        BotBlockConfig       `mapstructure:"bot_block"`
 	// TrustForwardedIPForAPIKeyACL enables legacy raw forwarded-header takeover.
 	// When disabled, server.trusted_proxies is authoritative for all client-IP consumers.
 	TrustForwardedIPForAPIKeyACL  bool                                       `mapstructure:"trust_forwarded_ip_for_api_key_acl"`
@@ -2033,7 +2042,7 @@ func setDefaults() {
 	// WebAuthn / Passkeys are opt-in because every deployment must explicitly
 	// declare its relying-party domain and trusted browser origins.
 	viper.SetDefault("webauthn.enabled", false)
-	viper.SetDefault("webauthn.rp_display_name", "Sub2API")
+	viper.SetDefault("webauthn.rp_display_name", brand.Name)
 	viper.SetDefault("webauthn.rp_id", "")
 	viper.SetDefault("webauthn.rp_origins", []string{})
 
@@ -2067,6 +2076,10 @@ func setDefaults() {
 
 	// Security - disable direct fallback on proxy error
 	viper.SetDefault("security.proxy_fallback.allow_direct_on_error", false)
+
+	// Security - AI crawler User-Agent 拦截（SECURITY_BOT_BLOCK_ENABLED=false 关闭）
+	viper.SetDefault("security.bot_block.enabled", true)
+	viper.SetDefault("security.bot_block.extra_user_agents", []string{})
 
 	// Billing
 	viper.SetDefault("billing.circuit_breaker.enabled", true)

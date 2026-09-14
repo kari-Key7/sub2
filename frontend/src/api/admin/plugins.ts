@@ -7,6 +7,7 @@ export interface PluginCapability {
 }
 
 export interface PluginRequirements {
+  // 字段名由第三方插件 manifest 的 requires 块决定（宿主版本约束），不随品牌改名
   sub2api: string
   recommended_sub2api_version?: string
   tested_sub2api_versions?: string[]
@@ -32,9 +33,9 @@ export interface PluginCompatibility {
   tested: boolean
   status: 'compatible' | 'untested' | 'incompatible'
   message: string
-  current_sub2api_version: string
-  required_sub2api_version: string
-  recommended_sub2api_version: string
+  current_kimai_version: string
+  required_kimai_version: string
+  recommended_kimai_version: string
   plugin_protocol: number
   transport_api: number
   ui_bridge: number

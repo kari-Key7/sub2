@@ -35,6 +35,7 @@
             </p>
           </div>
           <a
+            v-if="documentUrl"
             :href="documentUrl"
             target="_blank"
             rel="noopener noreferrer"
@@ -125,11 +126,12 @@ const visible = computed(() => authStore.isAuthenticated && authStore.isAdmin &&
 const expectedPhrase = computed(() => complianceStore.expectedPhrase)
 const canSubmit = computed(() => typedPhrase.value.trim() === expectedPhrase.value)
 const currentDocument = computed(() => getLocale() === 'zh' ? zhDocument : enDocument)
+// 外部文档链接由后端下发；私有部署不再回退到公开仓库地址，为空时隐藏链接
 const documentUrl = computed(() => {
   if (getLocale() === 'zh') {
-    return complianceStore.status?.document_url_zh || 'https://github.com/Wei-Shaw/sub2api/blob/main/docs/legal/admin-compliance.zh.md'
+    return complianceStore.status?.document_url_zh || ''
   }
-  return complianceStore.status?.document_url_en || 'https://github.com/Wei-Shaw/sub2api/blob/main/docs/legal/admin-compliance.en.md'
+  return complianceStore.status?.document_url_en || ''
 })
 const inputError = computed(() => {
   if (!attemptedSubmit.value || canSubmit.value) {
