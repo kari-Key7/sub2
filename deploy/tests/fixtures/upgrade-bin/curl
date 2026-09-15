@@ -1,0 +1,9 @@
+#!/bin/bash
+# Fake curl for deploy/tests/upgrade-test.sh: the health probe passes unless
+# FAKE_HEALTH=fail. Every probe is recorded so tests can assert it happened.
+
+set -eu
+
+printf 'curl %s\n' "$*" >> "${FAKE_DOCKER_LOG:?FAKE_DOCKER_LOG is required}"
+[[ "${FAKE_HEALTH:-ok}" == "fail" ]] && exit 22
+exit 0

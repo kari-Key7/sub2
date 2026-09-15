@@ -1,0 +1,73 @@
+#!/bin/bash
+# Fake docker for deploy/tests/upgrade-test.sh: records every invocation and
+# simulates just enough of pull/tag/exec/run/compose/logs/login for upgrade.sh.
+
+set -eu
+
+LOG="${FAKE_DOCKER_LOG:?FAKE_DOCKER_LOG is required}"
+printf 'docker %s\n' "$*" >> "${LOG}"
+
+case "${1:-}" in
+    compose)
+        # `docker compose version` probe and `docker compose up ...` both succeed.
+        exit 0
+        ;;
+    login)
+        # Consume --password-stdin so the token never lands on a command line.
+        cat >/dev/null
+        exit 0
+        ;;
+    logout)
+        exit 0
+        ;;
+    pull)
+        [[ "${FAKE_PULL_FAIL:-}" == "1" ]] && { echo "pull failed" >&2; exit 1; }
+        printf '%s\n' "${2:-}" >> "${LOG}.images"
+        exit 0
+        ;;
+    tag)
+        # Tagging makes the target name exist from now on.
+        printf '%s\n' "${3:-}" >> "${LOG}.images"
+        exit 0
+        ;;
+    image)
+        # `docker image inspect <ref>` → exists iff pre-seeded via FAKE_IMAGES
+        # (space separated) or created by an earlier pull/tag in this run.
+        [[ "${2:-}" == "inspect" ]] || exit 0
+        for existing in ${FAKE_IMAGES:-}; do
+            [[ "${existing}" == "${3:-}" ]] && exit 0
+        done
+        [[ -f "${LOG}.images" ]] && grep -qxF -- "${3:-}" "${LOG}.images" && exit 0
+        exit 1
+        ;;
+    exec)
+        # pg_dump inside the postgres container: emit a fake dump on stdout.
+        printf 'FAKE-PG-DUMP\n'
+        exit 0
+        ;;
+    run)
+        # `docker run ... -v <host>:/backup ... tar czf /backup/<name> ...`
+        host_dir=""
+        archive=""
+        prev=""
+        for arg in "$@"; do
+            if [[ "${prev}" == "-v" && "${arg}" == *:/backup ]]; then
+                host_dir="${arg%:/backup}"
+            fi
+            if [[ "${prev}" == "czf" ]]; then
+                archive="${arg#/backup/}"
+            fi
+            prev="${arg}"
+        done
+        [[ -n "${host_dir}" && -n "${archive}" ]] || { echo "fake docker run: unexpected args" >&2; exit 1; }
+        printf 'FAKE-DATA-TGZ\n' > "${host_dir}/${archive}"
+        exit 0
+        ;;
+    logs)
+        printf 'fake app logs\n'
+        exit 0
+        ;;
+    *)
+        exit 0
+        ;;
+esac

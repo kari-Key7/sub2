@@ -1,0 +1,142 @@
+name: Deploy
+
+# 生产部署：
+#   - main 分支上的 CI 工作流全部通过后自动触发（workflow_run）；
+#   - 也可在 Actions 页面手动 Run workflow（跳过 CI 门禁，用于紧急发布/回滚验证）。
+# 流程：构建镜像 → 推到 GHCR 私有包 → SSH 到服务器执行 deploy/upgrade.sh
+#（备份 → 拉取 → 切换 → 只重建 app 容器 → 健康检查 → 失败自动回滚）。
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      skip_backup:
+        description: '跳过升级前的数据库 / 数据卷备份'
+        required: false
+        type: boolean
+        default: false
+
+# 同一时间只允许一个生产部署；后续触发排队而不是取消。
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build-push:
+    # workflow_run 触发时只在 CI 成功后继续；手动触发不设门禁。
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    outputs:
+      image_ref: ${{ steps.meta.outputs.image_ref }}
+      sha: ${{ steps.commit.outputs.sha }}
+    steps:
+      - name: Resolve commit to deploy
+        id: commit
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_run" ]; then
+            echo "sha=${{ github.event.workflow_run.head_sha }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "sha=${{ github.sha }}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          # 精确检出 CI 验证过的那个提交，而不是分支最新提交。
+          ref: ${{ steps.commit.outputs.sha }}
+
+      - name: Compute image tags
+        id: meta
+        run: |
+          owner="$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')"
+          repo="$(echo '${{ github.event.repository.name }}' | tr '[:upper:]' '[:lower:]')"
+          short_sha="$(echo '${{ steps.commit.outputs.sha }}' | cut -c1-7)"
+          image="ghcr.io/${owner}/${repo}"
+          {
+            echo "image=${image}"
+            echo "image_ref=${image}:sha-${short_sha}"
+            echo "tags=${image}:sha-${short_sha},${image}:latest"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile
+          platforms: linux/amd64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: |
+            org.opencontainers.image.revision=${{ steps.commit.outputs.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy:
+    needs: build-push
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Checkout (for deploy/upgrade.sh)
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.build-push.outputs.sha }}
+          sparse-checkout: deploy/upgrade.sh
+          sparse-checkout-cone-mode: false
+
+      - name: Prepare SSH
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          # 固定服务器主机指纹，避免首次连接时盲信（防中间人）。
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 644 ~/.ssh/known_hosts
+
+      - name: Upload upgrade script
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT || '22' }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+        run: |
+          scp -o BatchMode=yes -i ~/.ssh/deploy_key -P "$DEPLOY_PORT" deploy/upgrade.sh \
+            "$DEPLOY_USER@$DEPLOY_HOST:$DEPLOY_PATH/upgrade.sh"
+
+      - name: Run upgrade on server
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT || '22' }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+          IMAGE_REF: ${{ needs.build-push.outputs.image_ref }}
+          GHCR_USER: ${{ github.actor }}
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SKIP_BACKUP: ${{ github.event.inputs.skip_backup == 'true' && '--no-backup' || '' }}
+        run: |
+          # 拉取镜像用的 token 只在本次任务内有效，通过 stdin 传给服务器（不落命令行、不落盘）；
+          # upgrade.sh 结束时会 docker logout。
+          printf '%s' "$GHCR_TOKEN" | ssh -o BatchMode=yes -i ~/.ssh/deploy_key -p "$DEPLOY_PORT" \
+            "$DEPLOY_USER@$DEPLOY_HOST" \
+            "GHCR_TOKEN=\$(cat) GHCR_USER='$GHCR_USER' DEPLOY_PATH='$DEPLOY_PATH' \
+             bash '$DEPLOY_PATH/upgrade.sh' $SKIP_BACKUP '$IMAGE_REF'"
