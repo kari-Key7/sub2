@@ -25,6 +25,9 @@ import (
 var (
 	ErrNoUpdateAvailable         = infraerrors.Conflict("ALREADY_UP_TO_DATE", "no update available; current version is latest")
 	ErrRollbackVersionNotAllowed = infraerrors.BadRequest("ROLLBACK_VERSION_NOT_ALLOWED", "version is not in the allowed rollback list")
+	// ErrOnlineUpdateDisabled 源码/自建镜像不允许用上游官方二进制原地覆盖（会丢掉本 fork 的全部定制），
+	// 升级统一走 CI 部署流水线。
+	ErrOnlineUpdateDisabled = infraerrors.Forbidden("ONLINE_UPDATE_DISABLED", "online update is disabled for source builds; deploy through the CI pipeline instead")
 )
 
 const (
@@ -75,6 +78,11 @@ func NewUpdateService(cache UpdateCache, githubClient GitHubReleaseClient, versi
 		currentVersion: version,
 		buildType:      buildType,
 	}
+}
+
+// onlineUpdateEnabled 仅官方 release 构建允许在线更新/回滚；本 fork 的 CI 镜像标记为 source。
+func (s *UpdateService) onlineUpdateEnabled() bool {
+	return s.buildType == "release"
 }
 
 // UpdateInfo contains update information
@@ -131,6 +139,16 @@ type GitHubAsset struct {
 
 // CheckUpdate checks for available updates
 func (s *UpdateService) CheckUpdate(ctx context.Context, force bool) (*UpdateInfo, error) {
+	// 源码构建：不联网查上游，直接报告"已是最新"，前端不会出现更新提示。
+	if !s.onlineUpdateEnabled() {
+		return &UpdateInfo{
+			CurrentVersion: s.currentVersion,
+			LatestVersion:  s.currentVersion,
+			HasUpdate:      false,
+			BuildType:      s.buildType,
+		}, nil
+	}
+
 	// Try cache first
 	if !force {
 		if cached, err := s.getFromCache(ctx); err == nil && cached != nil {
@@ -163,6 +181,9 @@ func (s *UpdateService) CheckUpdate(ctx context.Context, force bool) (*UpdateInf
 // PerformUpdate downloads and applies the update
 // Uses atomic file replacement pattern for safe in-place updates
 func (s *UpdateService) PerformUpdate(ctx context.Context) error {
+	if !s.onlineUpdateEnabled() {
+		return ErrOnlineUpdateDisabled
+	}
 	info, err := s.CheckUpdate(ctx, true)
 	if err != nil {
 		return err
@@ -281,6 +302,9 @@ func (s *UpdateService) applyReleaseAssets(ctx context.Context, releaseAssets []
 
 // Rollback restores the previous version
 func (s *UpdateService) Rollback() error {
+	if !s.onlineUpdateEnabled() {
+		return ErrOnlineUpdateDisabled
+	}
 	exePath, err := os.Executable()
 	if err != nil {
 		return fmt.Errorf("failed to get executable path: %w", err)
@@ -307,6 +331,9 @@ func (s *UpdateService) Rollback() error {
 // strictly older than the current version (the current version itself is excluded),
 // newest first. Draft and prerelease entries are skipped.
 func (s *UpdateService) ListRollbackVersions(ctx context.Context) ([]RollbackVersion, error) {
+	if !s.onlineUpdateEnabled() {
+		return []RollbackVersion{}, nil
+	}
 	releases, err := s.fetchRollbackCandidates(ctx)
 	if err != nil {
 		return nil, err
@@ -327,6 +354,9 @@ func (s *UpdateService) ListRollbackVersions(ctx context.Context) ([]RollbackVer
 // The target must be one of the versions returned by ListRollbackVersions;
 // anything else (including the current version) is rejected.
 func (s *UpdateService) RollbackToVersion(ctx context.Context, version string) error {
+	if !s.onlineUpdateEnabled() {
+		return ErrOnlineUpdateDisabled
+	}
 	target := strings.TrimPrefix(strings.TrimSpace(version), "v")
 	if target == "" {
 		return ErrRollbackVersionNotAllowed

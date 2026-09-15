@@ -83,7 +83,9 @@ COPY backend/ ./
 # Copy frontend dist from previous stage (must be after backend copy to avoid being overwritten)
 COPY --from=frontend-builder /app/backend/internal/web/dist ./internal/web/dist
 
-# Build the binary (BuildType=release for CI builds, embed frontend)
+# Build the binary (embed frontend).
+# BuildType=source：本 fork 的镜像由自己的 CI 构建，升级走部署流水线；
+# 标记为 source 后后台不会出现"有新版本 / 立即更新"（那会用上游官方二进制覆盖定制版本）。
 # Version precedence: build arg VERSION > exact git tag > cmd/server/VERSION
 RUN --mount=type=cache,id=sub2api-gomod,target=/go/pkg/mod \
     --mount=type=cache,id=sub2api-gobuild,target=/root/.cache/go-build \
@@ -92,7 +94,7 @@ RUN --mount=type=cache,id=sub2api-gomod,target=/go/pkg/mod \
     DATE_VALUE="${DATE:-$(date -u +%Y-%m-%dT%H:%M:%SZ)}" && \
     CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build \
     -tags embed \
-    -ldflags="-s -w -X main.Version=${VERSION_VALUE} -X main.Commit=${COMMIT} -X main.Date=${DATE_VALUE} -X main.BuildType=release" \
+    -ldflags="-s -w -X main.Version=${VERSION_VALUE} -X main.Commit=${COMMIT} -X main.Date=${DATE_VALUE} -X main.BuildType=source" \
     -trimpath \
     -o /app/sub2api \
     ./cmd/server
