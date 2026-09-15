@@ -133,10 +133,16 @@ jobs:
           GHCR_USER: ${{ github.actor }}
           GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           SKIP_BACKUP: ${{ github.event.inputs.skip_backup == 'true' && '--no-backup' || '' }}
+          # 服务器上的 compose 布局（2026-09 核对）：文件 docker-compose.prod.yml（服务器本地维护，
+          # 不在仓库里），app 服务用 build: 构建，镜像名为 compose 自动生成的 deploy-sub2api。
+          # 布局变了在仓库 Settings → Variables 里设置 DEPLOY_COMPOSE_FILE / DEPLOY_APP_IMAGE 覆盖。
+          COMPOSE_FILE: ${{ vars.DEPLOY_COMPOSE_FILE || 'docker-compose.prod.yml' }}
+          APP_IMAGE: ${{ vars.DEPLOY_APP_IMAGE || 'deploy-sub2api' }}
         run: |
           # 拉取镜像用的 token 只在本次任务内有效，通过 stdin 传给服务器（不落命令行、不落盘）；
           # upgrade.sh 结束时会 docker logout。
           printf '%s' "$GHCR_TOKEN" | ssh -o BatchMode=yes -i ~/.ssh/deploy_key -p "$DEPLOY_PORT" \
             "$DEPLOY_USER@$DEPLOY_HOST" \
             "GHCR_TOKEN=\$(cat) GHCR_USER='$GHCR_USER' DEPLOY_PATH='$DEPLOY_PATH' \
+             COMPOSE_FILE='$COMPOSE_FILE' APP_IMAGE='$APP_IMAGE' \
              bash '$DEPLOY_PATH/upgrade.sh' $SKIP_BACKUP '$IMAGE_REF'"

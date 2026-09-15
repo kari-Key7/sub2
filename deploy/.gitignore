@@ -14,6 +14,10 @@ redis_data/
 *.backup
 *.bak
 
+# upgrade.sh 产生的备份与部署记录
+backups/
+DEPLOYED
+
 # Temporary files
 *.tmp
 *.log

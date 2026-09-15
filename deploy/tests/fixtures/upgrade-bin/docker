@@ -41,7 +41,14 @@ case "${1:-}" in
         exit 1
         ;;
     exec)
-        # pg_dump inside the postgres container: emit a fake dump on stdout.
+        # `docker exec <app> wget ... /health` is the in-container health probe;
+        # anything else is pg_dump inside the postgres container.
+        case "$*" in
+            *wget*)
+                [[ "${FAKE_HEALTH:-ok}" == "fail" ]] && exit 1
+                exit 0
+                ;;
+        esac
         printf 'FAKE-PG-DUMP\n'
         exit 0
         ;;

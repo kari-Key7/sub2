@@ -14,11 +14,14 @@
 #
 # 环境变量（均有默认值）：
 #   DEPLOY_PATH      compose 所在目录（默认：脚本所在目录）
+#   COMPOSE_FILE     compose 文件名（默认由 docker compose 自行选择 docker-compose.yml）
 #   APP_SERVICE      compose 里的应用服务名（默认 sub2api）
 #   APP_CONTAINER    应用容器名（默认 sub2api）
 #   APP_IMAGE        compose 引用的本地镜像名（默认 sub2api:latest）
 #   PG_CONTAINER     PostgreSQL 容器名（默认 sub2api-postgres）
-#   HEALTH_URL       健康检查地址（默认 http://localhost:8080/health）
+#   HEALTH_URL       设置后改为在宿主机上 curl 该地址做健康检查；默认在应用容器内执行
+#                    wget http://localhost:8080/health（与 compose 自带 healthcheck 相同，
+#                    不依赖端口是否发布到宿主机）
 #   HEALTH_TIMEOUT   健康检查最长等待秒数（默认 150）
 #   HEALTH_INTERVAL  健康检查轮询间隔秒数（默认 3）
 #   BACKUP_KEEP      每类备份保留份数（默认 7）
@@ -34,7 +37,8 @@ APP_CONTAINER="${APP_CONTAINER:-sub2api}"
 APP_IMAGE="${APP_IMAGE:-sub2api:latest}"
 PREV_IMAGE="${APP_IMAGE%%:*}:prev"
 PG_CONTAINER="${PG_CONTAINER:-sub2api-postgres}"
-HEALTH_URL="${HEALTH_URL:-http://localhost:8080/health}"
+HEALTH_URL="${HEALTH_URL:-}"
+HEALTH_IN_CONTAINER_URL="http://localhost:8080/health"
 HEALTH_TIMEOUT="${HEALTH_TIMEOUT:-150}"
 HEALTH_INTERVAL="${HEALTH_INTERVAL:-3}"
 BACKUP_KEEP="${BACKUP_KEEP:-7}"
@@ -54,11 +58,15 @@ usage() {
     exit "${1:-0}"
 }
 
+# COMPOSE_FILE 非空时显式传 -f（服务器用的是 docker-compose.local.yml 而非默认文件名）。
+# `${arr[@]+"${arr[@]}"}` 写法兼容 macOS 自带的 bash 3.2 在 set -u 下展开空数组。
 compose() {
+    local -a file_args=()
+    [[ -n "${COMPOSE_FILE:-}" ]] && file_args=(-f "${COMPOSE_FILE}")
     if docker compose version >/dev/null 2>&1; then
-        docker compose "$@"
+        docker compose ${file_args[@]+"${file_args[@]}"} "$@"
     else
-        docker-compose "$@"
+        docker-compose ${file_args[@]+"${file_args[@]}"} "$@"
     fi
 }
 
@@ -98,10 +106,18 @@ backup() {
     prune_backups 'data_*.tgz'
 }
 
+probe_health() {
+    if [[ -n "${HEALTH_URL}" ]]; then
+        curl -fsS -o /dev/null --max-time 5 "${HEALTH_URL}"
+    else
+        docker exec "${APP_CONTAINER}" wget -q -T 5 -O /dev/null "${HEALTH_IN_CONTAINER_URL}"
+    fi
+}
+
 wait_healthy() {
     local waited=0
     while (( waited < HEALTH_TIMEOUT )); do
-        if curl -fsS -o /dev/null --max-time 5 "${HEALTH_URL}"; then
+        if probe_health >/dev/null 2>&1; then
             return 0
         fi
         sleep "${HEALTH_INTERVAL}"
@@ -110,8 +126,10 @@ wait_healthy() {
     return 1
 }
 
+# --force-recreate：镜像标签指向了新镜像也强制重建，避免 compose 判定"无变化"而静默跑旧版本；
+# --no-deps：postgres / redis / caddy 等依赖服务一律不动。
 restart_app() {
-    ( cd "${DEPLOY_PATH}" && compose up -d --no-deps "${APP_SERVICE}" )
+    ( cd "${DEPLOY_PATH}" && compose up -d --no-deps --force-recreate "${APP_SERVICE}" )
 }
 
 rollback() {
@@ -183,7 +201,7 @@ docker tag "${IMAGE_REF}" "${APP_IMAGE}"
 log "重建 ${APP_SERVICE} 容器（不影响 postgres / redis / 数据卷）"
 restart_app
 
-log "等待健康检查 ${HEALTH_URL}（最长 ${HEALTH_TIMEOUT}s）"
+log "等待健康检查 ${HEALTH_URL:-容器内 ${HEALTH_IN_CONTAINER_URL}}（最长 ${HEALTH_TIMEOUT}s）"
 if ! wait_healthy; then
     log "健康检查失败，最近日志："
     docker logs --tail 100 "${APP_CONTAINER}" 2>&1 | sed 's/^/    /' || true

@@ -67,14 +67,15 @@ assert_logged "docker login ghcr.io -u bot --password-stdin"
 assert_logged "docker pull ${REF}"
 assert_logged "docker tag sub2api:latest sub2api:prev"
 assert_logged "docker tag ${REF} sub2api:latest"
-assert_logged "docker compose up -d --no-deps sub2api"
-assert_logged "curl"
+assert_logged "docker compose up -d --no-deps --force-recreate sub2api"
+assert_logged "docker exec sub2api wget -q -T 5 -O /dev/null http://localhost:8080/health"
+assert_not_logged "curl"
 assert_logged "docker logout ghcr.io"
 
 assert_order "docker exec sub2api-postgres" "docker pull ${REF}"
 assert_order "docker tag sub2api:latest sub2api:prev" "docker tag ${REF} sub2api:latest"
-assert_order "docker tag ${REF} sub2api:latest" "docker compose up -d --no-deps sub2api"
-assert_order "docker compose up -d --no-deps sub2api" "curl"
+assert_order "docker tag ${REF} sub2api:latest" "docker compose up -d --no-deps --force-recreate sub2api"
+assert_order "docker compose up -d --no-deps --force-recreate sub2api" "docker exec sub2api wget"
 
 ls "${DEPLOY_PATH}"/backups/db_*.dump >/dev/null 2>&1 || fail "database backup file missing"
 grep -q 'FAKE-PG-DUMP' "${DEPLOY_PATH}"/backups/db_*.dump || fail "database backup is empty"
@@ -94,7 +95,7 @@ assert_logged "docker tag ${REF} sub2api:latest"
 assert_logged "docker tag sub2api:prev sub2api:latest"
 assert_order "docker tag ${REF} sub2api:latest" "docker tag sub2api:prev sub2api:latest"
 assert_logged "docker logs --tail 100 sub2api"
-[[ "$(grep -c 'docker compose up -d --no-deps sub2api' "${FAKE_DOCKER_LOG}")" -eq 2 ]] || fail "expected a second compose up for the rollback"
+[[ "$(grep -c 'docker compose up -d --no-deps --force-recreate sub2api' "${FAKE_DOCKER_LOG}")" -eq 2 ]] || fail "expected a second compose up for the rollback"
 if [[ -e "${DEPLOY_PATH}/DEPLOYED" ]] && grep -q "^image=${REF}$" "${DEPLOY_PATH}/DEPLOYED"; then
     fail "failed deploy must not be recorded as deployed"
 fi
@@ -105,7 +106,7 @@ fi
 new_case rollback-cmd
 FAKE_IMAGES="sub2api:latest sub2api:prev" "${SCRIPT}" --rollback >/dev/null
 assert_logged "docker tag sub2api:prev sub2api:latest"
-assert_logged "docker compose up -d --no-deps sub2api"
+assert_logged "docker compose up -d --no-deps --force-recreate sub2api"
 assert_not_logged "docker pull"
 assert_not_logged "docker exec sub2api-postgres"
 assert_not_logged "docker tag sub2api:latest sub2api:prev"
@@ -159,5 +160,26 @@ if FAKE_PULL_FAIL=1 "${SCRIPT}" --no-backup "${REF}" >/dev/null 2>&1; then
 fi
 assert_not_logged "docker tag"
 assert_not_logged "docker compose up"
+
+# ---------------------------------------------------------------------------
+# 8. Non-default compose file and image name (the kimai.kim layout):
+#    every compose call must carry -f, and tags must use APP_IMAGE.
+# ---------------------------------------------------------------------------
+new_case local-compose
+COMPOSE_FILE=docker-compose.local.yml APP_IMAGE=sub2api:local FAKE_IMAGES="sub2api:local" \
+    "${SCRIPT}" --no-backup "${REF}" >/dev/null
+assert_logged "docker compose -f docker-compose.local.yml up -d --no-deps --force-recreate sub2api"
+assert_not_logged "docker compose up -d"
+assert_logged "docker tag sub2api:local sub2api:prev"
+assert_logged "docker tag ${REF} sub2api:local"
+assert_not_logged "sub2api:latest"
+
+# ---------------------------------------------------------------------------
+# 9. HEALTH_URL set → probe from the host with curl instead of inside the container.
+# ---------------------------------------------------------------------------
+new_case host-health
+HEALTH_URL=http://127.0.0.1:9090/health "${SCRIPT}" --no-backup "${REF}" >/dev/null
+assert_logged "curl -fsS -o /dev/null --max-time 5 http://127.0.0.1:9090/health"
+assert_not_logged "wget"
 
 printf 'upgrade-test: all cases passed\n'
