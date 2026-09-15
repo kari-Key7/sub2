@@ -525,6 +525,18 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/admin/exposed-models',
+    name: 'AdminExposedModels',
+    component: () => import('@/views/admin/ExposedModelsView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: true,
+      title: 'Exposed Models',
+      titleKey: 'admin.exposedModels.title',
+      descriptionKey: 'admin.exposedModels.description'
+    }
+  },
+  {
     path: '/admin/plugins',
     name: 'AdminPlugins',
     component: () => import('@/views/admin/PluginsView.vue'),

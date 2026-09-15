@@ -1076,47 +1076,36 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 func (h *GatewayHandler) Models(c *gin.Context) {
 	apiKey, _ := middleware2.GetAPIKeyFromContext(c)
 
-	var groupID *int64
+	var group *service.Group
 	var platform string
 
 	if apiKey != nil && apiKey.Group != nil {
-		groupID = &apiKey.Group.ID
+		group = apiKey.Group
 		platform = apiKey.Group.Platform
 	}
 	if forcedPlatform, ok := middleware2.GetForcePlatformFromContext(c); ok && strings.TrimSpace(forcedPlatform) != "" {
 		platform = forcedPlatform
 	}
 
-	if platform == service.PlatformComposite {
-		availableModels := h.compositeAvailableModels(c.Request.Context(), groupID)
-		if apiKey != nil && apiKey.Group != nil && apiKey.Group.CustomModelsListEnabled() {
-			availableModels = filterModelsByCustomList(availableModels, defaultModelIDsForPlatform(service.PlatformComposite), apiKey.Group.ModelsListConfig.Models)
-			writeCustomModelsList(c, service.PlatformComposite, availableModels)
+	// 模型 ID 的判定与管理端「对外模型」预览共用 resolveExposedModels；这里只决定输出格式。
+	exposed := resolveExposedModels(c.Request.Context(), h.gatewayService, group, platform)
+	switch exposed.Source {
+	case exposedModelsSourceCustomList:
+		writeCustomModelsList(c, platform, exposed.IDs)
+	case exposedModelsSourceAccountMapping:
+		writeModelsList(c, platform, exposed.IDs)
+	default:
+		if platform == service.PlatformComposite {
+			writeModelsList(c, platform, exposed.IDs)
 			return
 		}
-		if len(availableModels) > 0 {
-			writeModelsList(c, service.PlatformComposite, availableModels)
-			return
-		}
-		writeModelsList(c, service.PlatformComposite, defaultModelIDsForPlatform(service.PlatformComposite))
-		return
+		writeDefaultModelsList(c, platform)
 	}
+}
 
-	// Get available models from account configurations for the selected group platform.
-	availableModels := h.gatewayService.GetAvailableModels(c.Request.Context(), groupID, platform)
-	if apiKey != nil && apiKey.Group != nil && apiKey.Group.CustomModelsListEnabled() {
-		fallbackModels := defaultModelIDsForPlatform(platform)
-		availableModels = filterModelsByCustomList(customModelsListSource(platform, availableModels, fallbackModels), fallbackModels, apiKey.Group.ModelsListConfig.Models)
-		writeCustomModelsList(c, platform, availableModels)
-		return
-	}
-
-	if len(availableModels) > 0 {
-		writeModelsList(c, platform, availableModels)
-		return
-	}
-
-	// Fallback to default models
+// writeDefaultModelsList 在没有任何账号映射时写出平台内置默认模型（完整元数据形态）。
+// 其模型 ID 必须与 fallbackModelIDsForPlatform 一致。
+func writeDefaultModelsList(c *gin.Context, platform string) {
 	if platform == service.PlatformOpenAI {
 		c.JSON(http.StatusOK, gin.H{
 			"object": "list",
@@ -1190,7 +1179,7 @@ func (h *GatewayHandler) codexModelIDsForGroup(ctx context.Context, group *servi
 		platform = group.Platform
 	}
 	if platform == service.PlatformComposite {
-		availableModels := h.compositeAvailableModels(ctx, groupID)
+		availableModels := compositeAvailableModels(ctx, h.gatewayService, groupID)
 		fallbackModels := defaultCodexModelIDsForPlatform(service.PlatformComposite)
 		if group.CustomModelsListEnabled() {
 			return filterModelsByCustomList(availableModels, fallbackModels, group.ModelsListConfig.Models)
@@ -1216,15 +1205,16 @@ func (h *GatewayHandler) codexModelIDsForGroup(ctx context.Context, group *servi
 	return fallbackModels
 }
 
-func (h *GatewayHandler) compositeAvailableModels(ctx context.Context, groupID *int64) []string {
-	if h == nil || h.gatewayService == nil {
+// compositeAvailableModels 汇总 Composite 分组下各具体平台账号映射暴露的模型。
+func compositeAvailableModels(ctx context.Context, gatewayService *service.GatewayService, groupID *int64) []string {
+	if gatewayService == nil {
 		return nil
 	}
 	seen := make(map[string]struct{})
 	models := make([]string, 0)
-	schedulablePlatforms := h.gatewayService.GetSchedulablePlatforms(ctx, groupID)
+	schedulablePlatforms := gatewayService.GetSchedulablePlatforms(ctx, groupID)
 	for _, platform := range []string{service.PlatformAnthropic, service.PlatformGemini, service.PlatformOpenAI, service.PlatformAntigravity, service.PlatformGrok, service.PlatformKimi, service.PlatformZhipu, service.PlatformDeepseek} {
-		platformModels := h.gatewayService.GetAvailableModels(ctx, groupID, platform)
+		platformModels := gatewayService.GetAvailableModels(ctx, groupID, platform)
 		if len(platformModels) == 0 {
 			// CN 供应商没有静态默认模型列表（defaultModelIDsForPlatform 的
 			// default 分支是 Claude 列表），composite 下只暴露账号映射键。

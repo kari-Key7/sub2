@@ -46,6 +46,9 @@ func RegisterAdminRoutes(
 		// 账号管理
 		registerAccountRoutes(admin, h, stepUpAuth)
 
+		// 对外模型：按分组预览 GET /v1/models 实际返回的模型
+		admin.GET("/exposed-models", h.ExposedModels.List)
+
 		// 公告管理
 		registerAnnouncementRoutes(admin, h)
 
