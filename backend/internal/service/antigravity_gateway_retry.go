@@ -48,35 +48,16 @@ type antigravityRetryLoopResult struct {
 
 // resolveAntigravityForwardBaseURL 解析转发用 base URL。
 //
-// 显式环境变量优先。未配置时，LoadCodeAssist 返回 paidTier 的付费账号使用
-// daily 端点，其他账号继续使用生产端点，避免免费账号的 OAuth token 出现 401。
-//
-// 历史上这里改用 ForwardBaseURLs()（把 daily/sandbox 排到首位）并默认取首个地址，
-// 导致网关把带生产 OAuth token 的请求发到 daily-cloudcode-pa.sandbox.googleapis.com，
-// 上游拒绝 → 账号被 401「Invalid bearer token」/502 打入临时不可调度且无法恢复
-// （见 #3611 / #2962）。后台「测试连接」用的是生产端点，所以「测试成功但网关 401」。
-func resolveAntigravityForwardBaseURL(account *Account) string {
+// 本 fork 固定走 daily 端点（Google Pro 账号在 daily 端点可用且配额更宽松），
+// 不再按账号 plan_type 区分，也不使用 antigravity.BaseURLs 做 URL 级回退；
+// 仅当环境变量 GATEWAY_ANTIGRAVITY_FORWARD_BASE_URL=prod（不区分大小写）时切回生产端点。
+// account 参数保留以兼容调用方签名。
+func resolveAntigravityForwardBaseURL(_ *Account) string {
 	mode := strings.ToLower(strings.TrimSpace(os.Getenv(antigravityForwardBaseURLEnv)))
 	if mode == "prod" {
 		return "https://cloudcode-pa.googleapis.com"
 	}
 	return "https://daily-cloudcode-pa.googleapis.com"
-}
-
-func accountHasAntigravityPaidTier(account *Account) bool {
-	if account == nil || account.Credentials == nil {
-		return false
-	}
-	planType, ok := account.Credentials["plan_type"].(string)
-	if !ok {
-		return false
-	}
-	switch strings.ToLower(strings.TrimSpace(planType)) {
-	case "pro", "ultra":
-		return true
-	default:
-		return false
-	}
 }
 
 // smartRetryAction 智能重试的处理结果

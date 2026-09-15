@@ -104,8 +104,10 @@ func (s *stubAntigravityAccountRepo) UpdateExtra(ctx context.Context, id int64, 
 	return nil
 }
 
+// 转发只用 resolveAntigravityForwardBaseURL 给出的单一端点，429 "Resource has been exhausted"
+// 也不会回退到别的 URL；这里用 prod 模式验证，daily 作为"不该被调用"的对照。
 func TestAntigravityRetryLoop_NoURLFallback_UsesConfiguredBaseURL(t *testing.T) {
-	t.Setenv(antigravityForwardBaseURLEnv, "")
+	t.Setenv(antigravityForwardBaseURLEnv, "prod")
 
 	oldBaseURLs := append([]string(nil), antigravity.BaseURLs...)
 	oldAvailability := antigravity.DefaultURLAvailability
@@ -114,8 +116,8 @@ func TestAntigravityRetryLoop_NoURLFallback_UsesConfiguredBaseURL(t *testing.T) 
 		antigravity.DefaultURLAvailability = oldAvailability
 	}()
 
-	base1 := "https://ag-1.test"
-	base2 := "https://ag-2.test"
+	base1 := "https://cloudcode-pa.googleapis.com"
+	base2 := "https://daily-cloudcode-pa.googleapis.com"
 	antigravity.BaseURLs = []string{base1, base2}
 	antigravity.DefaultURLAvailability = antigravity.NewURLAvailability(time.Minute)
 
@@ -1047,15 +1049,11 @@ func TestIsAntigravityAccountSwitchError(t *testing.T) {
 	}
 }
 
+// 本 fork 固定走 daily 端点，plan_type 与 antigravity.BaseURLs 都不再影响选择；
+// 只有 GATEWAY_ANTIGRAVITY_FORWARD_BASE_URL=prod 才切回生产端点。
 func TestResolveAntigravityForwardBaseURL(t *testing.T) {
-	oldBaseURLs := append([]string(nil), antigravity.BaseURLs...)
-	defer func() {
-		antigravity.BaseURLs = oldBaseURLs
-	}()
-
-	prodURL := "https://prod.test"
-	dailyURL := "https://daily.test"
-	antigravity.BaseURLs = []string{prodURL, dailyURL}
+	prodURL := "https://cloudcode-pa.googleapis.com"
+	dailyURL := "https://daily-cloudcode-pa.googleapis.com"
 
 	tests := []struct {
 		name    string
@@ -1063,30 +1061,14 @@ func TestResolveAntigravityForwardBaseURL(t *testing.T) {
 		account *Account
 		want    string
 	}{
-		{
-			name: "pro defaults to daily", account: &Account{Credentials: map[string]any{"plan_type": " Pro "}},
-			want: dailyURL,
-		},
-		{
-			name: "ultra defaults to daily", account: &Account{Credentials: map[string]any{"plan_type": "ULTRA"}},
-			want: dailyURL,
-		},
-		{name: "free defaults to prod", account: &Account{Credentials: map[string]any{"plan_type": "free"}}, want: prodURL},
-		{name: "abnormal defaults to prod", account: &Account{Credentials: map[string]any{"plan_type": "Abnormal"}}, want: prodURL},
-		{name: "unknown defaults to prod", account: &Account{Credentials: map[string]any{"plan_type": "enterprise"}}, want: prodURL},
-		{name: "malformed defaults to prod", account: &Account{Credentials: map[string]any{"plan_type": map[string]any{"name": "pro"}}}, want: prodURL},
-		{name: "missing defaults to prod", account: &Account{Credentials: map[string]any{}}, want: prodURL},
-		{name: "nil account defaults to prod", account: nil, want: prodURL},
-		{
-			name: "daily override wins for free tier", env: " daily ",
-			account: &Account{Credentials: map[string]any{"plan_type": "free"}},
-			want:    dailyURL,
-		},
-		{
-			name: "prod override wins for paid tier", env: " PROD ",
-			account: &Account{Credentials: map[string]any{"plan_type": "pro"}},
-			want:    prodURL,
-		},
+		{name: "pro uses daily", account: &Account{Credentials: map[string]any{"plan_type": " Pro "}}, want: dailyURL},
+		{name: "free uses daily", account: &Account{Credentials: map[string]any{"plan_type": "free"}}, want: dailyURL},
+		{name: "malformed plan uses daily", account: &Account{Credentials: map[string]any{"plan_type": map[string]any{"name": "pro"}}}, want: dailyURL},
+		{name: "missing plan uses daily", account: &Account{Credentials: map[string]any{}}, want: dailyURL},
+		{name: "nil account uses daily", account: nil, want: dailyURL},
+		{name: "explicit daily env", env: " daily ", account: nil, want: dailyURL},
+		{name: "unknown env falls back to daily", env: "sandbox", account: nil, want: dailyURL},
+		{name: "prod env wins regardless of plan", env: " PROD ", account: &Account{Credentials: map[string]any{"plan_type": "free"}}, want: prodURL},
 	}
 
 	for _, tt := range tests {

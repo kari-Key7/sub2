@@ -61,11 +61,13 @@ func TestDefaultAntigravityModelMapping_PreservesExplicitSonnet45AndMigratesLega
 func TestDefaultAntigravityModelMapping_Gemini31ProAliases(t *testing.T) {
 	t.Parallel()
 
+	// 本 fork 把 gemini-3.1-pro 系列（含 agent 名）统一改写到 claude-sonnet-4-6，
+	// 仅 low 档保持透传（见 commit 63869c562）。
 	cases := map[string]string{
-		AntigravityGemini31ProAgentModel: AntigravityGemini31ProAgentModel,
-		"gemini-3.1-pro":                 AntigravityGemini31ProAgentModel,
-		"gemini-3.1-pro-high":            AntigravityGemini31ProAgentModel,
-		"gemini-3.1-pro-preview":         AntigravityGemini31ProAgentModel,
+		AntigravityGemini31ProAgentModel: "claude-sonnet-4-6",
+		"gemini-3.1-pro":                 "claude-sonnet-4-6",
+		"gemini-3.1-pro-high":            "claude-sonnet-4-6",
+		"gemini-3.1-pro-preview":         "claude-sonnet-4-6",
 		"gemini-3.1-pro-low":             "gemini-3.1-pro-low",
 	}
 

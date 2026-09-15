@@ -27,8 +27,14 @@ func TestCleanJSONSchema_NestedArrayItems(t *testing.T) {
 	cleaned := CleanJSONSchema(inputSchema)
 	require.NotNil(t, cleaned)
 
-	queryProps := cleaned["properties"].(map[string]any)["query"].(map[string]any)["properties"].(map[string]any)
-	whereSchema := queryProps["where"].(map[string]any)
+	topProps, ok := cleaned["properties"].(map[string]any)
+	require.True(t, ok)
+	querySchema, ok := topProps["query"].(map[string]any)
+	require.True(t, ok)
+	queryProps, ok := querySchema["properties"].(map[string]any)
+	require.True(t, ok)
+	whereSchema, ok := queryProps["where"].(map[string]any)
+	require.True(t, ok)
 	require.Equal(t, "array", whereSchema["type"])
 
 	itemsSchema, ok := whereSchema["items"].(map[string]any)
